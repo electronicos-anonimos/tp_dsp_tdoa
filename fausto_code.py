@@ -1,7 +1,7 @@
-from scipy.signal import correlate
-import matplotlib.pyplot as plt
 import numpy as np
 import soundfile as sf
+from scipy.signal import correlate
+from scipy.signal import correlation_lags
 
 def estimate_doa(audio_file1, audio_file2, mic_distance=0.1, sound_speed=343.0, fs=None):
     """
@@ -38,9 +38,9 @@ def estimate_doa(audio_file1, audio_file2, mic_distance=0.1, sound_speed=343.0, 
 
     # Calcular retardo temporal
     tdoa = lag_max / fs
+
     # Calcular ángulo
     arg = sound_speed * tdoa / mic_distance
-    print(arg)
     if abs(arg) > 1:
         print("Advertencia: valor fuera del dominio de arccos, truncando.")
         arg = np.clip(arg, -1.0, 1.0)
