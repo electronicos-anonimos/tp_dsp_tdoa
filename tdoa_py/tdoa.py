@@ -49,3 +49,5 @@ def estimate_doa(audio_file1, audio_file2, mic_distance=0.1, sound_speed=343.0, 
     doa_angle_deg = np.degrees(angle_rad)
 
     return doa_angle_deg, tdoa
+
+
