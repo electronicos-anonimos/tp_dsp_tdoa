@@ -145,5 +145,5 @@ def estimate_doa_from_wavs(wav_folder, mic_d, fs=None, method="classic"):
     for h, val in hemi_avgs.items():
         print(f"{h}: Promedio = {val:.2f}°")
 
-    return avg_angle_deg, avg_tdoa, hemi_avgs
+    return avg_angle_deg, avg_tdoa, hemi_avgs, tdoas, angles
 
