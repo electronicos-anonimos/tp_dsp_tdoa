@@ -91,98 +91,296 @@ class SimulationRoom:
             paths.append(path)
 
         return paths
-    
-    
+
+
 class EstimateDOA:
     def __init__(self, mic_d, fs, wav_files, c=343):
         self.mic_d = mic_d
+        self.fs = fs
         self.wav_files = wav_files
         self.c = c
-        self.n_mics = self._determinate_n_mics()
-        self.fs = fs
+        self.n_mics = self._determine_n_mics()
+        self.signals = []
+        self.ref_signal = None
         self.tdoa_values = []
         self.angle_values = []
-        self.signals = [] 
-        self.ref_signal = []
-        self.avg_tdoa = []
-        self.avg_angle_deg = []
-        self.hemi_avgs = []
+        self.hemi_avgs = {}
+        self.avg_tdoa = None
+        self.avg_angle_deg = None
 
-    def _determinate_n_mics(self):
+    def _determine_n_mics(self):
+        """Determina la cantidad de micrófonos en función de los archivos de audio."""
         if len(self.wav_files) < 2:
             raise ValueError("Se requieren al menos 2 señales")
-        
-        print(len(self.wav_files))
         return len(self.wav_files)
-            
+    
     def load_signals(self):
-        max_len = 0
+        """Carga señales de audio y aplica zero-padding para alineación temporal."""
+        max_len = max([len(sf.read(f)[0]) for f in self.wav_files])
+
         for f in self.wav_files:
             sig, curr_fs = sf.read(f)
+
             if self.fs is None:
                 self.fs = curr_fs
             elif self.fs != curr_fs:
-                raise ValueError(f"{f}: fs={curr_fs}, se esperaba fs={self.fs}")
-            self.signals.append(sig)
-            max_len = max(max_len, len(sig))
-            
-        # Zero padding
-        self.signals = [np.pad(sig, (0, max_len - len(sig))) for sig in self.signals]
-        
-        # Micrófono de referencia (centro)
+                raise ValueError(f"{f}: Frecuencia de muestreo inconsistente ({curr_fs} vs {self.fs})")
+
+            self.signals.append(np.pad(sig, (0, max_len - len(sig))))
+
         self.ref_idx = self.n_mics // 2
         self.ref_signal = self.signals[self.ref_idx]
+    
+    def _compute_tdoa(self, signal, ref_signal, method="classic"):
+        """Calcula el TDOA mediante distintos métodos de correlación."""
+        if method == "classic":
+            corr = correlate(signal, ref_signal, mode='full', method='fft')
+        else:
+            X = np.fft.fft(signal)
+            Y = np.fft.fft(ref_signal)
 
-    def cross_correlation_classic(self):
+            if method == "phat":
+                G = (X * np.conj(Y)) / (np.abs(X * np.conj(Y)) + 1e-8)  # PHAT con normalización
+            elif method == "scot":
+                Sx = np.abs(X) ** 2
+                Sy = np.abs(Y) ** 2
+                G = (X * np.conj(Y)) / (np.sqrt(Sx * Sy) + 1e-8)  # SCOT con estabilización numérica
+            else:
+                raise ValueError("Método de correlación no válido.")
+
+            corr = np.fft.ifft(G).real
+
+        lags = correlation_lags(len(signal), len(ref_signal), mode='full')
+        lag = lags[np.argmax(corr)]
+        return lag / self.fs
+
+    def _compute_angle(self, tdoa, mic_idx):
+        """Calcula el ángulo con base en el TDOA y la distancia entre micrófonos."""
+        baseline = self.mic_d * abs(mic_idx - self.ref_idx)
+        if baseline == 0:
+            return None
         
+        cos_val = np.clip(tdoa * self.c / baseline, -1.0, 1.0)
+        angle_rad = np.arccos(cos_val)
+        angle_deg = np.degrees(angle_rad)
+
+        return (360 - angle_deg) % 360 if tdoa < 0 else angle_deg
+
+    def estimate_doa(self, method="classic"):
+        """Aplica el método seleccionado para estimar el ángulo y TDOA."""
+        self.tdoa_values.clear()
+        self.angle_values.clear()
+
         for i, sig in enumerate(self.signals):
-                if i == self.ref_idx:
-                    continue
+            if i == self.ref_idx:
+                continue
 
-                # Correlación cruzada
-                corr = correlate(sig, self.ref_signal, mode='full', method='fft')
-                lags = correlation_lags(len(sig), len(self.ref_signal), mode='full')
-                lag = lags[np.argmax(corr)]
-                tdoa = lag / self.fs
-                self.tdoa_values.append(tdoa)
+            tdoa = self._compute_tdoa(sig, self.ref_signal, method=method)
+            self.tdoa_values.append(tdoa)
 
-                # Distancia efectiva
-                baseline = self.mic_d * abs(i - self.ref_idx)
-                if baseline == 0:
-                    continue
+            angle = self._compute_angle(tdoa, i)
+            if angle is not None:
+                self.angle_values.append(angle)
 
-                # Calcular ángulo
-                cos_val = np.clip(tdoa * self.c / baseline, -1.0, 1.0)
-                angle_rad = np.arccos(cos_val)
-                angle_deg = np.degrees(angle_rad)
-
-                # Expandir a [0, 360) según signo del TDOA
-                if tdoa < 0:
-                    angle_deg = (360 - angle_deg) % 360
-
-                print(f"Mic {i}: TDOA = {tdoa:.6f} s, Ángulo estimado = {angle_deg:.2f}°")
-                self.angle_values.append(angle_deg)
-        
         # Agrupar por hemisferios
         hemispheres = {
             "H1": [a for a in self.angle_values if (0 <= a < 90) or (270 <= a < 360)],
             "H2": [a for a in self.angle_values if 90 <= a < 270],
         }
 
-        # Calcular promedio por hemisferio presente
-        self.hemi_avgs = {h: np.mean(a) for h, a in hemispheres.items() if len(a) > 0}
+        self.hemi_avgs = {h: np.mean(a) for h, a in hemispheres.items() if a}
 
-        # Determinar hemisferio dominante
-        dominant_hemi, dominant_angles = max(hemispheres.items(), key=lambda x: len(x[1]))
-        if not dominant_angles:
-            raise RuntimeError("No se pudo determinar un hemisferio dominante.")
+        dominant_hemi = max(hemispheres, key=lambda h: len(hemispheres[h]), default=None)
+        if dominant_hemi and hemispheres[dominant_hemi]:
+            self.avg_angle_deg = np.mean(hemispheres[dominant_hemi])
+            self.avg_tdoa = np.mean(self.tdoa_values)
 
-        self.avg_angle_deg = np.mean(dominant_angles)
-        self.avg_tdoa = np.mean(self.tdoa_values)
-
-        print(f"\nHemisferio dominante: {dominant_hemi}")
+        print(f"\nMétodo: {method.upper()} | Hemisferio dominante: {dominant_hemi}")
         for h, val in self.hemi_avgs.items():
             print(f"{h}: Promedio = {val:.2f}°")
 
-    
         return self.avg_angle_deg, self.avg_tdoa, self.hemi_avgs
+
+# class EstimateDOA:
+#     def __init__(self, mic_d, fs, wav_files, c=343):
+#         self.mic_d = mic_d
+#         self.fs = fs
+#         self.wav_files = wav_files
+#         self.c = c
+#         self.n_mics = self._determine_n_mics()
+#         self.signals = []
+#         self.ref_signal = None
+#         self.tdoa_values = []
+#         self.angle_values = []
+#         self.hemi_avgs = {}
+#         self.avg_tdoa = None
+#         self.avg_angle_deg = None
+
+#     def _determine_n_mics(self):
+#         """Determina la cantidad de micrófonos en función de los archivos de audio."""
+#         if len(self.wav_files) < 2:
+#             raise ValueError("Se requieren al menos 2 señales")
+#         return len(self.wav_files)
+    
+#     def load_signals(self):
+#         """Carga señales de audio y aplica zero-padding para alineación temporal."""
+#         max_len = max([len(sf.read(f)[0]) for f in self.wav_files])
+
+#         for f in self.wav_files:
+#             sig, curr_fs = sf.read(f)
+
+#             if self.fs is None:
+#                 self.fs = curr_fs
+#             elif self.fs != curr_fs:
+#                 raise ValueError(f"{f}: Frecuencia de muestreo inconsistente ({curr_fs} vs {self.fs})")
+
+#             self.signals.append(np.pad(sig, (0, max_len - len(sig))))
+
+#         self.ref_idx = self.n_mics // 2
+#         self.ref_signal = self.signals[self.ref_idx]
+    
+#     def _compute_tdoa(self, signal, ref_signal):
+#         """Calcula el TDOA mediante correlación cruzada clásica."""
+#         corr = correlate(signal, ref_signal, mode='full', method='fft')
+#         lags = correlation_lags(len(signal), len(ref_signal), mode='full')
+#         lag = lags[np.argmax(corr)]
+#         return lag / self.fs
+
+#     def _compute_angle(self, tdoa, mic_idx):
+#         """Calcula el ángulo con base en el TDOA y la distancia entre micrófonos."""
+#         baseline = self.mic_d * abs(mic_idx - self.ref_idx)
+#         if baseline == 0:
+#             return None
+        
+#         cos_val = np.clip(tdoa * self.c / baseline, -1.0, 1.0)
+#         angle_rad = np.arccos(cos_val)
+#         angle_deg = np.degrees(angle_rad)
+
+#         return (360 - angle_deg) % 360 if tdoa < 0 else angle_deg
+
+#     def cross_correlation_classic(self):
+#         """Aplica el método de correlación cruzada clásica para estimación de ángulos."""
+#         for i, sig in enumerate(self.signals):
+#             if i == self.ref_idx:
+#                 continue
+
+#             tdoa = self._compute_tdoa(sig, self.ref_signal)
+#             self.tdoa_values.append(tdoa)
+
+#             angle = self._compute_angle(tdoa, i)
+#             if angle is not None:
+#                 self.angle_values.append(angle)
+
+#         # Agrupar por hemisferios
+#         hemispheres = {
+#             "H1": [a for a in self.angle_values if (0 <= a < 90) or (270 <= a < 360)],
+#             "H2": [a for a in self.angle_values if 90 <= a < 270],
+#         }
+
+#         self.hemi_avgs = {h: np.mean(a) for h, a in hemispheres.items() if a}
+
+#         dominant_hemi = max(hemispheres, key=lambda h: len(hemispheres[h]), default=None)
+#         if dominant_hemi and hemispheres[dominant_hemi]:
+#             self.avg_angle_deg = np.mean(hemispheres[dominant_hemi])
+#             self.avg_tdoa = np.mean(self.tdoa_values)
+
+#         print(f"\nHemisferio dominante: {dominant_hemi}")
+#         for h, val in self.hemi_avgs.items():
+#             print(f"{h}: Promedio = {val:.2f}°")
+
+#         return self.avg_angle_deg, self.avg_tdoa, self.hemi_avgs
+
+    
+# class EstimateDOA:
+#     def __init__(self, mic_d, fs, wav_files, c=343):
+#         self.mic_d = mic_d
+#         self.wav_files = wav_files
+#         self.c = c
+#         self.n_mics = self._determine_n_mics()
+#         self.fs = fs
+#         self.tdoa_values = []
+#         self.angle_values = []
+#         self.signals = [] 
+#         self.ref_signal = []
+#         self.avg_tdoa = []
+#         self.avg_angle_deg = []
+#         self.hemi_avgs = []
+
+#     def _determine_n_mics(self):
+#         if len(self.wav_files) < 2:
+#             raise ValueError("Se requieren al menos 2 señales")
+        
+#         print(len(self.wav_files))
+#         return len(self.wav_files)
+            
+#     def load_signals(self):
+#         max_len = 0
+#         for f in self.wav_files:
+#             sig, curr_fs = sf.read(f)
+#             if self.fs is None:
+#                 self.fs = curr_fs
+#             elif self.fs != curr_fs:
+#                 raise ValueError(f"{f}: fs={curr_fs}, se esperaba fs={self.fs}")
+#             self.signals.append(sig)
+#             max_len = max(max_len, len(sig))
+            
+#         # Zero padding
+#         self.signals = [np.pad(sig, (0, max_len - len(sig))) for sig in self.signals]
+        
+#         # Micrófono de referencia (centro)
+#         self.ref_idx = self.n_mics // 2
+#         self.ref_signal = self.signals[self.ref_idx]
+
+#     def cross_correlation_classic(self):
+        
+#         for i, sig in enumerate(self.signals):
+#                 if i == self.ref_idx:
+#                     continue
+
+#                 # Correlación cruzada
+#                 corr = correlate(sig, self.ref_signal, mode='full', method='fft')
+#                 lags = correlation_lags(len(sig), len(self.ref_signal), mode='full')
+#                 lag = lags[np.argmax(corr)]
+#                 tdoa = lag / self.fs
+#                 self.tdoa_values.append(tdoa)
+
+#                 # Distancia efectiva
+#                 baseline = self.mic_d * abs(i - self.ref_idx)
+#                 if baseline == 0:
+#                     continue
+
+#                 # Calcular ángulo
+#                 cos_val = np.clip(tdoa * self.c / baseline, -1.0, 1.0)
+#                 angle_rad = np.arccos(cos_val)
+#                 angle_deg = np.degrees(angle_rad)
+
+#                 # Expandir a [0, 360) según signo del TDOA
+#                 if tdoa < 0:
+#                     angle_deg = (360 - angle_deg) % 360
+
+#                 print(f"Mic {i}: TDOA = {tdoa:.6f} s, Ángulo estimado = {angle_deg:.2f}°")
+#                 self.angle_values.append(angle_deg)
+        
+#         # Agrupar por hemisferios
+#         hemispheres = {
+#             "H1": [a for a in self.angle_values if (0 <= a < 90) or (270 <= a < 360)],
+#             "H2": [a for a in self.angle_values if 90 <= a < 270],
+#         }
+
+#         # Calcular promedio por hemisferio presente
+#         self.hemi_avgs = {h: np.mean(a) for h, a in hemispheres.items() if len(a) > 0}
+
+#         # Determinar hemisferio dominante
+#         dominant_hemi, dominant_angles = max(hemispheres.items(), key=lambda x: len(x[1]))
+#         if not dominant_angles:
+#             raise RuntimeError("No se pudo determinar un hemisferio dominante.")
+
+#         self.avg_angle_deg = np.mean(dominant_angles)
+#         self.avg_tdoa = np.mean(self.tdoa_values)
+
+#         print(f"\nHemisferio dominante: {dominant_hemi}")
+#         for h, val in self.hemi_avgs.items():
+#             print(f"{h}: Promedio = {val:.2f}°")
+
+    
+#         return self.avg_angle_deg, self.avg_tdoa, self.hemi_avgs
