@@ -2,134 +2,187 @@ import numpy as np
 import pyroomacoustics as pra
 import soundfile as sf
 import os
-import matplotlib.pyplot as plt
-from scipy.signal import fftconvolve, correlate, correlation_lags
+from scipy.signal import correlate, correlation_lags
 
-class AudioLoader:
-    """Carga y gestiona el audio anecoico desde un directorio y archivo especificado."""
-    def __init__(self, dir_path, file_name):
-        self.dir_path = dir_path
-        self.file_name = file_name
-        self.file_path = os.path.join(self.dir_path, self.file_name)
-        self.audio_data = None
-        self.fs = None  # Se determinará al cargar el archivo
-
-    def load_audio(self):
-        """Carga el archivo de audio y extrae la frecuencia de muestreo."""
-        if not os.path.exists(self.file_path):
-            raise FileNotFoundError(f"El archivo {self.file_name} no existe en {self.dir_path}")
-        
-        self.audio_data, self.fs = sf.read(self.file_path)
-        if self.audio_data is None or len(self.audio_data) == 0:
-            raise ValueError("El archivo de audio está vacío o no pudo cargarse correctamente.")
-        
-        print(f"Audio cargado: {self.file_path}, Frecuencia de muestreo detectada: {self.fs} Hz")
-
-class MicrophoneArray:
-    """Representa un array de micrófonos dentro de una sala, con posición central como referencia."""
-    def __init__(self, n_mics, mic_origin, displacement, axis):
-        self.n_mics = n_mics
-        self.mic_origin = np.array(mic_origin)
-        self.displacement = displacement
-        self.axis = axis.lower()
-        self.positions = self.generate_positions()
-
-    def generate_positions(self):
-        """Genera posiciones de los micrófonos de manera simétrica respecto al punto medio."""
-        positions = []
-        mid_index = self.n_mics // 2
-
-        for i in range(-mid_index, mid_index + 1):
-            if self.n_mics % 2 == 0 and i == 0:
-                continue  # Evitar micrófono central en arreglos pares
-
-            new_position = self.mic_origin.copy()
-
-            if self.axis == 'x':
-                new_position[0] += i * self.displacement
-            elif self.axis == 'y':
-                new_position[1] += i * self.displacement
-            elif self.axis == 'z':
-                new_position[2] += i * self.displacement
-
-            positions.append(new_position)
-
-        return positions
-
-class RoomSimulation:
-    """Representa una sala acústica con un array de micrófonos."""
-    def __init__(self, room_dim, rt60, microphone_array, audio_loader):
+class SimulationRoom:
+    
+    def __init__(self, room_dim, rt60, snr_db, simulation_name, fs=44100):
         self.room_dim = room_dim
+        self.center_x = self.room_dim[0] / 2 #centrado en x
+        self.center_y = self.room_dim[1] / 2 #centrado en y
         self.rt60 = rt60
-        self.microphone_array = microphone_array
-        self.audio_loader = audio_loader
-        self.room = None
-
-    def setup_room(self):
-        """Configura la sala en pyroomacoustics."""
+        self.snr_db = snr_db
+        self.fs = fs
+        self.room = self._create_room()
+        self.signal = None
+        self.simulation_name = simulation_name
+        # self.source = None
+        
+    def _create_room(self):
         abs_coeff, max_order = pra.inverse_sabine(self.rt60, self.room_dim)
-        self.room = pra.ShoeBox(self.room_dim, fs=self.audio_loader.fs, materials=pra.Material(abs_coeff), max_order=max_order)
-        for pos in self.microphone_array.positions:
-            self.room.add_microphone(pos)
+        room = pra.ShoeBox(
+            self.room_dim,
+            fs=self.fs,
+            materials=pra.Material(abs_coeff),
+            max_order=max_order
+        )
+        return room
 
-    def add_source(self, source_position):
-        """Añade una fuente de sonido a la sala y verifica que la señal esté disponible."""
-        if self.audio_loader.audio_data is None or len(self.audio_loader.audio_data) == 0:
-            raise ValueError("La señal de audio está vacía o no ha sido cargada correctamente.")
+    def array_microphone(self, n_mics, mic_d, mic_z, mic_directivity):
+          # Validar longitud del array
+        array_length = (n_mics - 1) * mic_d
+        if array_length > self.room_dim[0]:
+            raise ValueError(f"La longitud del array de micrófonos ({array_length:.2f} m) excede el largo de la sala en X ({self.room_dim[0]} m). Reducir n_mics o mic_d.")
         
-        self.room.add_source(source_position, signal=self.audio_loader.audio_data)
-        self.room.compute_rir()
-
-    def simulate(self):
-        """Ejecuta la simulación acústica."""
-        if not self.room.rir or not self.room.rir[0]:
-            raise ValueError("La respuesta al impulso (RIR) no ha sido calculada correctamente.")
-        self.room.simulate()
-
-class DirectionEstimator:
-    """Estima la dirección de arribo de una fuente sonora usando el array de micrófonos."""
-    @staticmethod
-    def estimate_doa(signals, mic_d, fs):
-        """Calcula el DOA y TDOA a partir de señales en memoria."""
-        if signals is None or len(signals) == 0:
-            raise ValueError("Las señales no han sido cargadas correctamente.")
+        # Posiciones de micrófonos (lineal en X)
+        mic_x = self.center_x
+        mic_y = self.center_y
+        x_offsets = np.linspace(-(n_mics - 1) * mic_d / 2, (n_mics - 1) * mic_d / 2, n_mics)
+        mic_positions = np.array([
+            mic_x + x_offsets,
+            [mic_y] * n_mics,
+            [mic_z] * n_mics
+        ])
+        self.room.add_microphone_array(mic_positions)
+    
+    def load_wav(self, folder, wav_file):
+        # Cargar señal anecoica
+        self.signal, file_fs = sf.read(f'{folder}/{wav_file}')
+        if file_fs != self.fs:
+            raise ValueError(f"La señal tiene fs={file_fs}, pero se espera fs={self.fs}")
+    
+    def source(self, src_dist, src_az_deg, src_z):
+        # Limitar src_dist según dimensiones
+        max_radius = min(self.room_dim[0], self.room_dim[1]) / 2
+        if src_dist > max_radius:
+            raise ValueError(f"src_dist = {src_dist} supera el máximo permitido ({max_radius}) para las dimensiones {self.room_dim[:2]}.")
         
-        c = 343  # velocidad del sonido (m/s)
-        n_mics = len(signals)
+        # Validar altura
+        if not (0 <= src_z <= self.room_dim[2]):
+            raise ValueError(f"La altura de la fuente src_z = {src_z} no está dentro de los límites [0, {self.room_dim[2]}]")
 
-        if n_mics < 2:
-            raise ValueError("Se requieren al menos 2 micrófonos.")
+        # Calcular posición de fuente (desde centro de sala)
+        az_rad = np.radians(src_az_deg)
+        src_x = self.center_x + src_dist * np.cos(az_rad)
+        src_y = self.center_y + src_dist * np.sin(az_rad)
+        src_pos = [src_x, src_y, src_z]
+        print(f"Fuente en: x={src_x:.2f}, y={src_y:.2f}, z={src_z:.2f}")
+        
+        # Verificar que esté dentro de la sala
+        if not (0 <= src_x <= self.room_dim[0]) or not (0 <= src_y <= self.room_dim[1]):
+            raise ValueError(f"La posición de la fuente {src_pos} está fuera de los límites de la sala {room_dim}")
+        
+        # Agregar fuente
+        self.room.add_source(position=src_pos, signal=self.signal)
+    
+    def run(self):
+        # Simulación
+        self.room.simulate(snr=self.snr_db)
+        
+    def save_simulation(self, out_dir):
+        # Guardar señales simuladas
+        out_dir = os.path.join(out_dir, self.simulation_name)
+        os.makedirs(out_dir, exist_ok=True)
+        
+        paths = []
+        for i, sig in enumerate(self.room.mic_array.signals):
+            path = os.path.join(out_dir, f"mic_{i+1}_{self.simulation_name}.wav")
+            sf.write(path, sig, self.fs)
+            paths.append(path)
 
-        ref_idx = n_mics // 2
-        ref_signal = signals[ref_idx]
+        return paths
+    
+    
+class EstimateDOA:
+    def __init__(self, mic_d, fs, wav_files, c=343):
+        self.mic_d = mic_d
+        self.wav_files = wav_files
+        self.c = c
+        self.n_mics = self._determinate_n_mics()
+        self.fs = fs
+        self.tdoa_values = []
+        self.angle_values = []
+        self.signals = [] 
+        self.ref_signal = []
+        self.avg_tdoa = []
+        self.avg_angle_deg = []
+        self.hemi_avgs = []
 
-        tdoas = []
-        angles = []
+    def _determinate_n_mics(self):
+        if len(self.wav_files) < 2:
+            raise ValueError("Se requieren al menos 2 señales")
+        
+        print(len(self.wav_files))
+        return len(self.wav_files)
+            
+    def load_signals(self):
+        max_len = 0
+        for f in self.wav_files:
+            sig, curr_fs = sf.read(f)
+            if self.fs is None:
+                self.fs = curr_fs
+            elif self.fs != curr_fs:
+                raise ValueError(f"{f}: fs={curr_fs}, se esperaba fs={self.fs}")
+            self.signals.append(sig)
+            max_len = max(max_len, len(sig))
+            
+        # Zero padding
+        self.signals = [np.pad(sig, (0, max_len - len(sig))) for sig in self.signals]
+        
+        # Micrófono de referencia (centro)
+        self.ref_idx = self.n_mics // 2
+        self.ref_signal = self.signals[self.ref_idx]
 
-        for i, sig in enumerate(signals):
-            if i == ref_idx:
-                continue
+    def cross_correlation_classic(self):
+        
+        for i, sig in enumerate(self.signals):
+                if i == self.ref_idx:
+                    continue
 
-            corr = correlate(sig, ref_signal, mode='full', method='fft')
-            lags = correlation_lags(len(sig), len(ref_signal), mode='full')
-            lag = lags[np.argmax(corr)]
-            tdoa = lag / fs
-            tdoas.append(tdoa)
+                # Correlación cruzada
+                corr = correlate(sig, self.ref_signal, mode='full', method='fft')
+                lags = correlation_lags(len(sig), len(self.ref_signal), mode='full')
+                lag = lags[np.argmax(corr)]
+                tdoa = lag / self.fs
+                self.tdoa_values.append(tdoa)
 
-            baseline = mic_d * abs(i - ref_idx)
-            if baseline == 0:
-                continue
+                # Distancia efectiva
+                baseline = self.mic_d * abs(i - self.ref_idx)
+                if baseline == 0:
+                    continue
 
-            cos_val = np.clip(tdoa * c / baseline, -1.0, 1.0)
-            angle_rad = np.arccos(cos_val)
-            angle_deg = np.degrees(angle_rad)
-            if tdoa < 0:
-                angle_deg = (360 - angle_deg) % 360
+                # Calcular ángulo
+                cos_val = np.clip(tdoa * self.c / baseline, -1.0, 1.0)
+                angle_rad = np.arccos(cos_val)
+                angle_deg = np.degrees(angle_rad)
 
-            angles.append(angle_deg)
+                # Expandir a [0, 360) según signo del TDOA
+                if tdoa < 0:
+                    angle_deg = (360 - angle_deg) % 360
 
-        avg_angle_deg = np.mean(angles)
-        avg_tdoa = np.mean(tdoas)
+                print(f"Mic {i}: TDOA = {tdoa:.6f} s, Ángulo estimado = {angle_deg:.2f}°")
+                self.angle_values.append(angle_deg)
+        
+        # Agrupar por hemisferios
+        hemispheres = {
+            "H1": [a for a in self.angle_values if (0 <= a < 90) or (270 <= a < 360)],
+            "H2": [a for a in self.angle_values if 90 <= a < 270],
+        }
 
-        return avg_angle_deg, avg_tdoa
+        # Calcular promedio por hemisferio presente
+        self.hemi_avgs = {h: np.mean(a) for h, a in hemispheres.items() if len(a) > 0}
 
+        # Determinar hemisferio dominante
+        dominant_hemi, dominant_angles = max(hemispheres.items(), key=lambda x: len(x[1]))
+        if not dominant_angles:
+            raise RuntimeError("No se pudo determinar un hemisferio dominante.")
+
+        self.avg_angle_deg = np.mean(dominant_angles)
+        self.avg_tdoa = np.mean(self.tdoa_values)
+
+        print(f"\nHemisferio dominante: {dominant_hemi}")
+        for h, val in self.hemi_avgs.items():
+            print(f"{h}: Promedio = {val:.2f}°")
+
+    
+        return self.avg_angle_deg, self.avg_tdoa, self.hemi_avgs
