@@ -33,6 +33,20 @@ def estimate_tdoa(sig_ref, sig, fs, method='classic'):
         corr = np.roll(corr, n // 2)
         lag = lags[np.argmax(corr)]
         return lag / fs
+    
+    elif method == 'scot':
+        n = len(sig_ref) + len(sig) - 1
+        X1 = fft(sig_ref, n=n)
+        X2 = fft(sig, n=n)
+        PSD1 = np.abs(X1)**2
+        PSD2 = np.abs(X2)**2
+        denom = np.sqrt(PSD1 * PSD2) + 1e-15  # evitar división por <ero
+        R = (X1 * np.conj(X2)) / denom
+        corr = np.real(ifft(R))
+        lags = np.arange(-n // 2, n // 2 + 1)
+        corr = np.roll(corr, n // 2)
+        lag = lags[np.argmax(corr)]
+        return lag / fs
 
     else:
         raise ValueError("Método no reconocido. Usar 'classic', 'phat' o 'roth'.")
