@@ -59,8 +59,7 @@ def estimate_doa(signals, d, fs, c=343.0, method='classic'):
         tdoas.append(tdoa)
 
     distances = [abs(i - ref_idx) * d for i in range(n_mics) if i != ref_idx]
-    print(distances)
-    print(tdoas)
+
     angles = []
     weighted_sum = 0
     idx = 0
@@ -73,21 +72,15 @@ def estimate_doa(signals, d, fs, c=343.0, method='classic'):
         dist = distances[idx]
         tdoa = tdoas[idx]
         idx += 1
-
-        args.append(tdoa * c / dist)
     
-    print("args", args)
+        args.append(tdoa * c / dist)
 
     max_val = np.max(np.abs(args))  # valor máximo en valor absoluto
-    
-    print("max_val", max_val)
     
     if max_val >= 1:
         normalized_args = args / max_val
     else:
         normalized_args = args        
-    
-    print("norm_args", normalized_args)
 
     for arg in normalized_args:
         phi_rad = np.arccos(arg)
