@@ -96,7 +96,7 @@ def sim_room_Nmics(
         [mic_y] * n_mics,
         [mic_z] * n_mics
     ])
-    print("posicion micrófonos: ", mic_positions)
+    # print("posicion micrófonos: ", mic_positions)
     room.add_microphone_array(mic_positions)
 
     # Cargar señal anecoica
@@ -109,7 +109,7 @@ def sim_room_Nmics(
     src_x = center_x + src_dist * np.cos(az_rad)
     src_y = center_y + src_dist * np.sin(az_rad)
     src_pos = [src_x, src_y, src_z]
-    print("posicion fuente: ", src_pos)
+    # print("posicion fuente: ", src_pos)
     # Verificar que esté dentro de la sala
     if not (0 <= src_x <= room_dim[0]) or not (0 <= src_y <= room_dim[1]):
         raise ValueError(f"La posición de la fuente {src_pos} está fuera de los límites de la sala {room_dim}")
