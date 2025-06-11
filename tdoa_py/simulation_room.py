@@ -58,15 +58,18 @@ def sim_room_Nmics(
         os.makedirs(out_dir, exist_ok=True)
 
     # Centro de la sala
-    center_x = room_dim[0] / 2
-    center_y = room_dim[1] / 2
+    center_x = room_dim[0] / 2 #room_x
+    center_y = room_dim[1] / 2 #room_y
 
-    # Validar longitud del array
+    # Validar longitud del array, que no sea mayor a la longitud x
     array_length = (n_mics - 1) * mic_d
     if array_length > room_dim[0]:
         raise ValueError(f"La longitud del array de micrófonos ({array_length:.2f} m) excede el largo de la sala en X ({room_dim[0]} m). Reducí n_mics o mic_d.")
 
     # Limitar src_dist según dimensiones
+    # ESTO HAY QUE ARREGLARLO PORQUE SI LA SALA NO ES CUADRADA, LIMITA DONDE ESTÁ PUESTA LA FUENTE A UN CIRCULO. ESTO SE ARREGLA (SILVIA) HACIENDO LA PROYECCIÓN DE LA FUENTE SOBRE LA MITAD DEL EJE MENOR Y EJE MAYOR
+    # src_dist*np.cos(src_az_deg) < min(eje_x, eje_y)
+    # CREO QUE ESTO ESTA DEMÁS!!!!! 
     max_radius = min(room_dim[0], room_dim[1]) / 2
     if src_dist > max_radius:
         raise ValueError(f"src_dist = {src_dist} supera el máximo permitido ({max_radius}) para las dimensiones {room_dim[:2]}.")

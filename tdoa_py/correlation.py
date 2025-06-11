@@ -90,8 +90,10 @@ def estimate_doa(signal_input, mic_d, fs, method="classic"):
     c = 343  
     signals, fs = load_signals(signal_input, fs)
     n_mics = len(signals)
+    print(n_mics)
 
     ref_idx = n_mics // 2
+    print(ref_idx)
     ref_signal = signals[ref_idx]
 
     tdoas = []
@@ -115,7 +117,7 @@ def estimate_doa(signal_input, mic_d, fs, method="classic"):
         tdoa = lag / fs
         tdoas.append(tdoa)
 
-        baseline = mic_d * abs(i - ref_idx)
+        baseline = mic_d * abs(i - ref_idx) # ¿Que hace esto?
         if baseline == 0:
             continue
 
@@ -132,8 +134,6 @@ def estimate_doa(signal_input, mic_d, fs, method="classic"):
         "H1": [a for a in angles if (0 <= a <= 90) or (270 <= a < 360)],
         "H2": [a for a in angles if 90 <= a < 270],
     }
-    
-    print(hemispheres)
 
     hemi_avgs = {h: np.mean(a) for h, a in hemispheres.items() if len(a) > 0}
 
