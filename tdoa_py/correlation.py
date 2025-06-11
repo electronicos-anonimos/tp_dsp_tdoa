@@ -92,7 +92,7 @@ def estimate_doa(signal_input, mic_d, fs, method="classic"):
     n_mics = len(signals)
     print(n_mics)
 
-    ref_idx = n_mics // 2
+    ref_idx = n_mics // 2 # se toma como mic de referencia el que está a la mitad
     print(ref_idx)
     ref_signal = signals[ref_idx]
 
@@ -100,8 +100,8 @@ def estimate_doa(signal_input, mic_d, fs, method="classic"):
     angles = []
 
     for i, sig in enumerate(signals):
-        if i == ref_idx:
-            continue
+        # if i == ref_idx:
+        #     continue
 
         if method == 'classic':
             corr = cross_correlation_fft(sig, ref_signal)
@@ -112,16 +112,19 @@ def estimate_doa(signal_input, mic_d, fs, method="classic"):
         else:
             raise ValueError("Método de correlación no válido")
 
-        lags = correlation_lags_fft(len(sig), len(ref_signal))
+        lags = correlation_lags_fft(len(sig), len(ref_signal)) # aplico la correlación 
         lag = lags[np.argmax(corr)]
         tdoa = lag / fs
+        print(f"t_{i}_{ref_idx} = ", tdoa)
         tdoas.append(tdoa)
 
-        baseline = mic_d * abs(i - ref_idx) # ¿Que hace esto?
-        if baseline == 0:
+        d_mic_n_to_ref = mic_d * abs(i - ref_idx)
+        print(f"d_{i}_{ref_idx}", d_mic_n_to_ref)
+        if d_mic_n_to_ref == 0:
             continue
 
-        cos_val = np.clip(tdoa * c / baseline, -1.0, 1.0)
+        cos_val = np.clip(tdoa * c / d_mic_n_to_ref, -1.0, 1.0) # que hace clip?
+        print("cos_val", cos_val)
         angle_rad = np.arccos(cos_val)
         angle_deg = np.degrees(angle_rad)
 
