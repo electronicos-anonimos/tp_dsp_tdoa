@@ -9,39 +9,34 @@ def estimate_tdoa(sig_ref, sig, fs, method='classic'):
         lag = lags[np.argmax(corr)]
         return lag / fs
 
-    elif method == 'phat':
-        n = len(sig_ref) + len(sig) - 1
-        X1 = fft(sig_ref, n=n)
-        X2 = fft(sig, n=n)
-        R = X1 * np.conj(X2)
-        R /= np.abs(R) + 1e-15  # Evitar división por cero
-        corr = np.real(ifft(R))
-        lags = np.arange(-n // 2, n // 2 + 1)
-        corr = np.roll(corr, n // 2)
-        lag = lags[np.argmax(corr)]
-        return lag / fs
-
     elif method == 'roth':
         n = len(sig_ref) + len(sig) - 1
         X1 = fft(sig_ref, n=n)
         X2 = fft(sig, n=n)
-        PSD1 = np.abs(X1)**2
-        PSD2 = np.abs(X2)**2
-        R = X1 * np.conj(X2) / (PSD1 * PSD2 + 1e-15)  # Ponderación Roth + evitar dividir por cero
+        R = X1 * np.conj(X2) / (np.abs(X2)**2)  # Ponderación Roth 
         corr = np.real(ifft(R))
         lags = np.arange(-n // 2, n // 2 + 1)
         corr = np.roll(corr, n // 2)
         lag = lags[np.argmax(corr)]
         return lag / fs
     
+    elif method == 'phat':
+        n = len(sig_ref) + len(sig) - 1
+        X1 = fft(sig_ref, n=n)
+        X2 = fft(sig, n=n)
+        R = X1 * np.conj(X2)
+        R = R / np.abs(R)  # Evitar división por cero
+        corr = np.real(ifft(R))
+        lags = np.arange(-n // 2, n // 2 + 1)
+        corr = np.roll(corr, n // 2)
+        lag = lags[np.argmax(corr)]
+        return lag / fs
+
     elif method == 'scot':
         n = len(sig_ref) + len(sig) - 1
         X1 = fft(sig_ref, n=n)
         X2 = fft(sig, n=n)
-        PSD1 = np.abs(X1)**2
-        PSD2 = np.abs(X2)**2
-        denom = np.sqrt(PSD1 * PSD2) + 1e-15  # evitar división por <ero
-        R = (X1 * np.conj(X2)) / denom
+        R = (X1 * np.conj(X2)) / np.sqrt( np.abs(X1)**2 * np.abs(X2)**2)
         corr = np.real(ifft(R))
         lags = np.arange(-n // 2, n // 2 + 1)
         corr = np.roll(corr, n // 2)
