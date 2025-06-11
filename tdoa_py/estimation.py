@@ -2,7 +2,7 @@ import numpy as np
 from scipy.signal import correlate, correlation_lags
 
 def estimate_tdoa(sig_ref, sig, fs):
-    corr = correlate(sig, sig_ref, mode='full')
+    corr = correlate(sig_ref, sig, mode='full')
     lags = correlation_lags(len(sig), len(sig_ref), mode='full')
     lag = lags[np.argmax(corr)]
     return lag / fs
@@ -40,7 +40,7 @@ def estimate_doa(signals, d, fs, c=343.0):
 
         weighted_sum += np.sign(i - ref_idx) * tdoa
 
-    doa = 180 - np.mean(angles)
+    doa = np.mean(angles)
 
 
     return doa, tdoas
