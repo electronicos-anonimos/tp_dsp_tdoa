@@ -40,12 +40,7 @@ def estimate_doa(signals, d, fs, c=343.0):
 
         weighted_sum += np.sign(i - ref_idx) * tdoa
 
-    mean_angle = np.mean(angles)
+    doa = 180 - np.mean(angles)
 
-    # INVERTIMOS la condición para corregir el problema
-    if weighted_sum > 0:
-        doa = mean_angle  # Fuente a la derecha → 0° a 90°
-    else:
-        doa = 180 - mean_angle  # Fuente a la izquierda → 90° a 180°
 
     return doa, tdoas
