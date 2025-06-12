@@ -6,6 +6,7 @@ import os
 def sim_room_Nmics(
     wav_path,
     out_dir,
+    sim_name,
     fs=44100,
 
     room_dim=(10, 10, 5),
@@ -101,6 +102,11 @@ def sim_room_Nmics(
 
     # Cargar señal anecoica
     signal, file_fs = sf.read(wav_path)
+    
+    # Normalizar la amplitud (escalar valores entre -1 y 1)
+    max_amplitude = np.max(np.abs(signal))
+    signal = signal / max_amplitude
+    
     if file_fs != fs:
         raise ValueError(f"La señal tiene fs={file_fs}, pero se espera fs={fs}")
 
@@ -122,12 +128,15 @@ def sim_room_Nmics(
 
     # Obtener señales simuladas
     mic_signals = np.array(room.mic_array.signals)
+    # Normalizar señales
+    mic_signals_norm = mic_signals_norm = [sig / np.max(np.abs(sig)) for sig in mic_signals]
+
 
     # Guardar señales simuladas si se requiere
     paths = []
     if save_audio:
-        for i, sig in enumerate(mic_signals):
-            path = os.path.join(out_dir, f"mic_{i+1}.wav")
+        for i, sig in enumerate(mic_signals_norm):
+            path = os.path.join(out_dir, f"mic_{i+1}_{sim_name}.wav")
             sf.write(path, sig, fs)
             paths.append(path)
         return src_az_deg, paths

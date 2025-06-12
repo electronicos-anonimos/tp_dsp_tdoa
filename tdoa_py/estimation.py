@@ -1,4 +1,5 @@
 import numpy as np
+import soundfile as sf
 from scipy.signal import correlate, correlation_lags
 from scipy.fft import fft, ifft
 
@@ -46,7 +47,45 @@ def estimate_tdoa(sig_ref, sig, fs, method='classic'):
     else:
         raise ValueError("Método no reconocido. Usar 'classic', 'phat' o 'roth'.")
 
+def load_signals(signal_input, fs=None):
+    """
+    Carga señales desde archivos `.wav` o desde `numpy arrays`.
+
+    Parámetros:
+    - signal_input: lista de rutas a archivos `.wav` o `numpy array` de forma (N, L)
+    - fs: frecuencia de muestreo deseada (se validará contra los archivos si son `.wav`)
+
+    Retorna:
+    - signals: lista de señales en `numpy arrays`
+    - fs: frecuencia de muestreo detectada
+    """
+    if isinstance(signal_input, list) and all(isinstance(p, str) for p in signal_input):
+        signals = []
+        max_len = 0
+        for f in signal_input:
+            sig, curr_fs = sf.read(f)
+            if fs is None:
+                fs = curr_fs
+            elif fs != curr_fs:
+                raise ValueError(f"{f}: fs={curr_fs}, se esperaba fs={fs}")
+            signals.append(np.asarray(sig, dtype=np.float32))  
+            max_len = max(max_len, len(sig))
+
+    elif isinstance(signal_input, np.ndarray):
+        # Si `signal_input` ya es un array de forma (N, L)
+        signals = [np.asarray(sig, dtype=np.float32) for sig in signal_input]
+        max_len = max(len(sig) for sig in signals)
+    else:
+        raise TypeError("signal_input debe ser una lista de rutas `.wav` o un `numpy array` de forma (N, L).")
+
+    # Padding para igualar la longitud de todas las señales
+    signals = [np.pad(sig, (0, max_len - len(sig))) for sig in signals]
+
+    return signals, fs
+
 def estimate_doa(signals, d, fs, c=343.0, method='classic'):
+    
+    signals, fs = load_signals(signals, fs)
     ref_idx = 0
     ref_signal = signals[ref_idx]
     n_mics = len(signals)
