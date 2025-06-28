@@ -72,8 +72,9 @@ def estimate_doa(signals, d, fs, c=343.0, method='classic'):
     signals, fs = load_signals(signals, fs)
     n_mics = len(signals)
 
-    angles_per_mic = []
-    tdoas_per_mic = []
+    angles_per_mic_ref = []
+    tdoas_per_mic_ref = []
+
 
     for i in range(n_mics - 1):
         ref_signal = signals[i]
@@ -88,13 +89,13 @@ def estimate_doa(signals, d, fs, c=343.0, method='classic'):
             phi_deg = np.degrees(np.arccos(arg))
             angles.append(phi_deg)
             tdoas.append(tdoa)
-        angles_per_mic.append(np.mean(angles))
-        tdoas_per_mic.append(np.mean(tdoas))
+        angles_per_mic_ref.append(angles)
+        tdoas_per_mic_ref.append(tdoas)
 
-    avg_angle = np.mean(angles_per_mic)
-    avg_tdoa = np.mean(tdoas_per_mic)
+    avg_angle = np.mean([np.mean(angles) for angles in angles_per_mic_ref])
+    avg_tdoa = np.mean([np.mean(tdoas) for tdoas in tdoas_per_mic_ref])
 
-    return avg_angle, avg_tdoa, angles_per_mic, tdoas_per_mic
+    return avg_angle, avg_tdoa, angles_per_mic_ref, tdoas_per_mic_ref
 
 # import numpy as np
 # import soundfile as sf

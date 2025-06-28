@@ -6,7 +6,7 @@ import os
 def sim_room_Nmics(
     wav_path,
     out_dir,
-    sim_name,
+    audio_name,
     fs=44100,
 
     room_dim=(10, 10, 5),
@@ -136,7 +136,7 @@ def sim_room_Nmics(
     paths = []
     if save_audio:
         for i, sig in enumerate(mic_signals_norm):
-            path = os.path.join(out_dir, f"mic_{i+1}_{sim_name}.wav")
+            path = os.path.join(out_dir, f"mic_{i+1}_{audio_name}.wav")
             sf.write(path, sig, fs)
             paths.append(path)
         return src_az_deg, paths
