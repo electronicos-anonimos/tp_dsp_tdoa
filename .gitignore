@@ -1,3 +1,4 @@
 .venv/
 audios/output
 tdoa_py/__pycache__/
+*.csv
