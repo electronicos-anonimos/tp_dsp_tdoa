@@ -5,3 +5,5 @@ tdoa_py/__pycache__/
 *-credenciales.json
 csv_results/
 *.csv
+*.png
+*.jpg
