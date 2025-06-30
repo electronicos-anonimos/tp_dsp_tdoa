@@ -23,7 +23,6 @@ pip install -r requirements.txt
 
 Listo, ejecutar el código. 
 
-
 ## SIMULACIONES DESDE GOOGLE SPREADSHETS
 
 Debe incluirse el archivo `simulationsdoa-credenciales.json` en el directorio de trabajo, para poder acceder a la hoja de calculo. Las credenciales se pueden obtener desde la consola de Google Cloud Platform, creando un proyecto y habilitando la API de Google Sheets.
