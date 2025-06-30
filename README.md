@@ -23,7 +23,6 @@ pip install -r requirements.txt
 
 Listo, ejecutar el código. 
 
-
 ## SIMULACIONES DESDE GOOGLE SPREADSHETS
 Se pueden hacer las simulaciónes cargando los datos en una hoja de calculo, puede así hacerse un barrido de 0 a 180° de forma muy sencilla. 
 
