@@ -7,3 +7,5 @@ csv_results/
 *.csv
 *.png
 *.jpg
+!simulations_input.csv
+!archivo-credenciales.json

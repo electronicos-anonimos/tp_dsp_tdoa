@@ -43,6 +43,5 @@ Luego en la hoja de cálculo se debe cargar el nombre del archivo de audio gener
 Todos los resultados se guardarán en un archivo CSV dentro de la carpeta `csv_results/`.
 
 ## GRÁFICOS
-Los gráficos se generarán automáticamente al ejecutar el código, y se guardarán en la carpeta `carpeta a definir a futuro por los cracks del codigo`. Por ahora esto está en desarrollo. 
-
+Los gráficos se generarán automáticamente al ejecutar el archivo `graphics.ipynb`. Este archivo generará gráficos de error angular tanto en tipo mapa de calor como lineas punteadas con desvío. Los gráficos se guardarán en la carpeta `img/` dentro de subcarpetas por cada medición.
 

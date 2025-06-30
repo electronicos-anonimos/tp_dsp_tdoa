@@ -1,0 +1,11 @@
+description,simulation_name,audio,room_x,room_y,room_z,rt60,snr_db,n_mics,mic_d,mic_z,mic_directivity,src_dist,src_z,src_ang_start,src_ang_end,src_ang_step
+Variación de la reverb ,sweep_0_180_5_05_rev,sine_sweep_24bit.wav,20,40,10,0.5,90,4,0.1,1.2,omni,5,1.2,0,180,5
+Variación de la reverb ,sweep_0_180_5_1_rev,sine_sweep_24bit.wav,20,40,10,1,90,4,0.1,1.2,omni,5,1.2,0,180,5
+Variación de la reverb ,sweep_0_180_5_15_rev,sine_sweep_24bit.wav,20,40,10,1.5,90,4,0.1,1.2,omni,5,1.2,0,180,5
+Variación de la reverb ,sweep_0_180_5_2_rev,sine_sweep_24bit.wav,20,40,10,2,90,4,0.1,1.2,omni,5,1.2,0,180,5
+Variación de la reverb ,sweep_0_180_5_25_rev,sine_sweep_24bit.wav,20,40,10,2.5,90,4,0.1,1.2,omni,5,1.2,0,180,5
+Variación de la reverb ,sweep_0_180_5_3_rev,sine_sweep_24bit.wav,20,40,10,3,90,4,0.1,1.2,omni,5,1.2,0,180,5
+Variación de la reverb ,sweep_0_180_5_35_rev,sine_sweep_24bit.wav,20,40,10,3.5,90,4,0.1,1.2,omni,5,1.2,0,180,5
+Variación de la reverb ,sweep_0_180_5_4_rev,sine_sweep_24bit.wav,20,40,10,4,90,4,0.1,1.2,omni,5,1.2,0,180,5
+Variación de la reverb ,sweep_0_180_5_45_rev,sine_sweep_24bit.wav,20,40,10,4.5,90,4,0.1,1.2,omni,5,1.2,0,180,5
+Variación de la reverb ,sweep_0_180_5_5_rev,sine_sweep_24bit.wav,20,40,10,5,90,4,0.1,1.2,omni,5,1.2,0,180,5
