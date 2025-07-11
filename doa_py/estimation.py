@@ -1,5 +1,3 @@
-## IMPLEMENTACION OPTIMIZADA - DEMORA UN CUARTO DEL TIEMPO
-
 import numpy as np
 import soundfile as sf
 from joblib import Parallel, delayed, parallel_backend
@@ -32,19 +30,33 @@ def load_signals(signals_input, fs=None, return_array=False):
     return (padded if not return_array else np.array(padded)), fs
 
 def precompute_ffts(signals, method):
+    n_mics = signals.shape[0]
     n = next_fast_len(signals.shape[1] * 2 - 1)
     ffts = fft(signals, n=n, axis=1)
-    if method == 'phat':
-        denom = np.abs(ffts) + 1e-10
-        normed = ffts / denom
-    elif method == 'roth':
-        denom = np.abs(ffts[:, np.newaxis])**2 + 1e-10
-        normed = ffts[:, np.newaxis] * np.conj(ffts) / denom
-    elif method == 'scot':
-        denom = np.sqrt((np.abs(ffts[:, np.newaxis])**2) * (np.abs(ffts)**2)) + 1e-10
-        normed = ffts[:, np.newaxis] * np.conj(ffts) / denom
-    else:
-        normed = ffts[:, np.newaxis] * np.conj(ffts)
+    normed = np.empty((n_mics, n_mics, n), dtype=np.complex64)
+
+    eps = 1e-10
+    for i in range(n_mics):
+        for j in range(n_mics):
+            X_i = ffts[i]
+            X_j = ffts[j]
+            G_ij = X_i * np.conj(X_j)
+
+            if method == 'phat':
+                normed[i, j] = G_ij / (np.abs(G_ij) + eps)
+
+            elif method == 'roth':
+                P_j = np.abs(X_j)**2
+                normed[i, j] = G_ij / (P_j + eps)
+
+            elif method == 'scot':
+                P_i = np.abs(X_i)**2
+                P_j = np.abs(X_j)**2
+                normed[i, j] = G_ij / (np.sqrt(P_i * P_j) + eps)
+
+            else:  # clásico
+                normed[i, j] = G_ij
+
     return normed, n
 
 def estimate_doa(signals_input, d, fs=None, c=343.0, method='classic', n_jobs=-1, verbose=False):
@@ -92,6 +104,7 @@ def estimate_doa(signals_input, d, fs=None, c=343.0, method='classic', n_jobs=-1
         print_backend()
 
     return avg_angle, avg_tdoa, angles_per_mic_ref, tdoas_per_mic_ref
+
 
 
 ## CODIGO VIEJO POR LAS DUDAS - DEMORA 4 VECES MAS
