@@ -207,11 +207,6 @@ def generate_heatmap(
 #     plt.show()
 
 
-import os
-import glob
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 
 def graficar_error_vs_variable(
     csv_folder: str,
@@ -230,6 +225,7 @@ def graficar_error_vs_variable(
     figsize: tuple = (7, 4.5),
     x_range: tuple = None,
     y_range: tuple = None,
+    loc_legend: str ="upper right",
     dispersion_func = np.std
 ):
     archivos = glob.glob(os.path.join(csv_folder, "*.csv"))
@@ -249,10 +245,10 @@ def graficar_error_vs_variable(
     df_all[method_column] = df_all[method_column].str.upper()
     df_plot = df_all[df_all[method_column].isin(metodos_a_graficar)]
 
-    if x_range:
-        df_plot = df_plot[df_plot[agrupador_x].between(*x_range)]
-    if y_range:
-        df_plot = df_plot[df_plot[columna_error].between(*y_range)]
+    # if x_range:
+        # df_plot = df_plot[df_plot[agrupador_x].between(*x_range)]
+    # if y_range:
+        # df_plot = df_plot[df_plot[columna_error].between(*y_range)]
 
     if df_plot.empty:
         raise ValueError("No hay datos disponibles tras aplicar los filtros.")
@@ -306,16 +302,171 @@ def graficar_error_vs_variable(
 
     plt.xlabel(x_label)
     plt.ylabel(y_label)
+    plt.xlim(x_range)
+    plt.ylim(y_range)
     plt.xticks(xticks, rotation='vertical')
     plt.gcf().autofmt_xdate(rotation=45, ha='right')
     plt.grid(True, linestyle="--", alpha=0.5)
-    plt.legend(title=y_axis_label, loc="upper right")
+    plt.legend(title=y_axis_label, loc=loc_legend)
     plt.tight_layout()
 
     os.makedirs(output_dir, exist_ok=True)
     ruta_salida = os.path.join(output_dir, f"{output_filename}.png")
     plt.savefig(ruta_salida, dpi=300)
     plt.show()
+
+def graficar_boxplot_error_vs_variable(
+    csv_folder: str,
+    agrupador_x: str,
+    columna_error: str,
+    method_column: str,
+    metodos_a_graficar: list,
+    x_label: str,
+    y_label: str = "Distribución del error [°]",
+    y_axis_label: str = "Método",
+    colores: dict = None,
+    output_dir: str = "img",
+    output_filename: str = None,
+    figsize: tuple = (7, 4.5),
+    y_range: tuple = None,
+):
+    import os, glob
+    import pandas as pd
+    import matplotlib.pyplot as plt
+
+    archivos = glob.glob(os.path.join(csv_folder, "*.csv"))
+    dfs = [pd.read_csv(f) for f in archivos if os.path.isfile(f)]
+    df_all = pd.concat(dfs, ignore_index=True)
+    df_all[method_column] = df_all[method_column].str.upper()
+    df_plot = df_all[df_all[method_column].isin(metodos_a_graficar)]
+
+    if df_plot.empty:
+        raise ValueError("No hay datos disponibles tras aplicar los filtros.")
+
+    valores_x = sorted(df_plot[agrupador_x].unique())
+    num_x = len(valores_x)
+    num_metodos = len(metodos_a_graficar)
+
+    # Preparar colores
+    default_colors = ["blue", "orange", "green", "red", "purple"]
+    if colores is None:
+        colores = {met: default_colors[i % len(default_colors)] for i, met in enumerate(metodos_a_graficar)}
+
+    # Preparar datos para boxplot
+    data = []
+    positions = []
+    ancho = 0.8 / num_metodos  # ancho relativo por método
+
+    for i, x_val in enumerate(valores_x):
+        for j, metodo in enumerate(metodos_a_graficar):
+            subset = df_plot[(df_plot[agrupador_x] == x_val) & (df_plot[method_column] == metodo)][columna_error]
+            if not subset.empty:
+                data.append(subset)
+                pos = i + j * ancho - (ancho * (num_metodos - 1) / 2)
+                positions.append(pos)
+
+    # Crear gráfico
+    plt.figure(figsize=figsize)
+    box = plt.boxplot(data, positions=positions, widths=ancho * 0.9, patch_artist=True)
+
+    # Colorear por método (orden fijo)
+    for k, patch in enumerate(box['boxes']):
+        metodo = metodos_a_graficar[k % num_metodos]
+        patch.set_facecolor(colores[metodo])
+
+    # Etiquetas del eje X
+    if all(float(x).is_integer() for x in valores_x):
+        etiquetas_x = [f"{int(x)}" for x in valores_x]
+    else:
+        etiquetas_x = [f"{x:.2f}" for x in valores_x]
+
+    xtick_positions = [i for i in range(num_x)]
+    plt.xticks(xtick_positions, etiquetas_x, rotation=45)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    if y_range:
+        plt.ylim(y_range)
+    plt.grid(True, linestyle="--", alpha=0.5)
+
+    # Leyenda
+    for metodo in metodos_a_graficar:
+        plt.plot([], [], color=colores[metodo], label=metodo)
+    plt.legend(title=y_axis_label)
+
+    plt.tight_layout()
+    os.makedirs(output_dir, exist_ok=True)
+    if output_filename is None:
+        met_str = "_".join(m.lower() for m in metodos_a_graficar)
+        output_filename = f"boxplot_{columna_error}_vs_{agrupador_x}_{met_str}"
+    ruta_salida = os.path.join(output_dir, f"{output_filename}.png")
+    plt.savefig(ruta_salida, dpi=300)
+    plt.show()
+
+def graficar_boxplot_error_promedio_por_metodo(
+    csv_folder: str,
+    columna_error: str,
+    method_column: str,
+    metodos_a_graficar: list,
+    x_label: str = "Método",
+    y_label: str = "Distribución del error promedio [°]",
+    colores: dict = None,
+    output_dir: str = "img",
+    output_filename: str = None,
+    figsize: tuple = (7, 4.5),
+    y_range: tuple = None,
+):
+    import os, glob
+    import pandas as pd
+    import matplotlib.pyplot as plt
+
+    archivos = glob.glob(os.path.join(csv_folder, "*.csv"))
+    dfs = [pd.read_csv(f) for f in archivos if os.path.isfile(f)]
+    df_all = pd.concat(dfs, ignore_index=True)
+    df_all[method_column] = df_all[method_column].str.upper()
+    df_plot = df_all[df_all[method_column].isin(metodos_a_graficar)]
+
+    if df_plot.empty:
+        raise ValueError("No hay datos disponibles tras aplicar los filtros.")
+
+    # Calcular error promedio por archivo y método
+    resumen = df_plot.groupby([method_column]).apply(
+        lambda df: df.groupby(df.index // 1)[columna_error].mean()
+    ).reset_index(level=0)
+
+    # Preparar colores
+    default_colors = ["blue", "orange", "green", "red", "purple"]
+    if colores is None:
+        colores = {met: default_colors[i % len(default_colors)] for i, met in enumerate(metodos_a_graficar)}
+
+    # Preparar datos para boxplot
+    data = []
+    for metodo in metodos_a_graficar:
+        subset = resumen[resumen[method_column] == metodo][columna_error]
+        data.append(subset)
+
+    # Crear gráfico
+    plt.figure(figsize=figsize)
+    box = plt.boxplot(data, labels=metodos_a_graficar, patch_artist=True)
+
+    for patch, metodo in zip(box['boxes'], metodos_a_graficar):
+        patch.set_facecolor(colores[metodo])
+
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    if y_range:
+        plt.ylim(y_range)
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+
+    os.makedirs(output_dir, exist_ok=True)
+    if output_filename is None:
+        met_str = "_".join(m.lower() for m in metodos_a_graficar)
+        output_filename = f"boxplot_error_promedio_por_metodo_{met_str}"
+    ruta_salida = os.path.join(output_dir, f"{output_filename}.png")
+    plt.savefig(ruta_salida, dpi=300)
+    plt.show()
+
+
 
 # def graficar_error_vs_variable(
 #     csv_folder: str,
